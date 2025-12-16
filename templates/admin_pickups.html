@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Pickups{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-4"><i class="bi bi-truck"></i> Manage Pickups</h1>
+    
+    <div class="card">
+        <div class="card-body">
+            <form method="GET" class="row g-3 mb-3">
+                <div class="col-md-3">
+                    <label for="date" class="form-label">Filter by Date</label>
+                    <input type="date" class="form-control" id="date" name="date" 
+                           value="{{ filter_date.strftime('%Y-%m-%d') }}">
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-funnel"></i> Filter
+                    </button>
+                </div>
+            </form>
+            
+            {% if pickups %}
+            <div class="mb-3">
+                <span class="badge bg-info">Total: {{ pickups|length }}</span>
+                <span class="badge bg-success">Completed: {{ pickups|selectattr('completed')|list|length }}</span>
+                <span class="badge bg-warning">Pending: {{ pickups|rejectattr('completed')|list|length }}</span>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Status</th>
+                            <th>Customer</th>
+                            <th>Address</th>
+                            <th>Phone</th>
+                            <th>Bin Info</th>
+                            <th>Completed By</th>
+                            <th>Completed At</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for pickup in pickups %}
+                        <tr class="{% if pickup.completed %}table-success{% else %}table-warning{% endif %}">
+                            <td>
+                                {% if pickup.completed %}
+                                <span class="badge bg-success">
+                                    <i class="bi bi-check-circle"></i> Done
+                                </span>
+                                {% else %}
+                                <span class="badge bg-warning">
+                                    <i class="bi bi-clock"></i> Pending
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td><strong>{{ pickup.customer.customer_name }}</strong></td>
+                            <td>{{ pickup.customer.address or '-' }}</td>
+                            <td>{{ pickup.customer.phone_number or '-' }}</td>
+                            <td>{{ pickup.customer.bin_qty or 0 }} x {{ pickup.customer.bin_size or 'N/A' }}</td>
+                            <td>{{ pickup.completed_by or '-' }}</td>
+                            <td>
+                                {% if pickup.completed_at %}
+                                {{ pickup.completed_at.strftime('%I:%M %p') }}
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if pickup.notes %}
+                                <span data-bs-toggle="tooltip" title="{{ pickup.notes }}">
+                                    <i class="bi bi-chat-left-text"></i>
+                                </span>
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-info text-center">
+                <i class="bi bi-info-circle" style="font-size: 3rem;"></i>
+                <h4 class="mt-3">No Pickups</h4>
+                <p>There are no pickups scheduled for this date.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Initialize Bootstrap tooltips
+var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+    return new bootstrap.Tooltip(tooltipTriggerEl)
+})
+</script>
+{% endblock %}

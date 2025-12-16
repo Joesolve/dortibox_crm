@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="mb-4"><i class="bi bi-speedometer2"></i> Admin Dashboard</h1>
+    
+    <div class="row">
+        <div class="col-md-3">
+            <div class="card stat-card bg-primary text-white">
+                <i class="bi bi-people" style="font-size: 3rem;"></i>
+                <h3>{{ total_customers }}</h3>
+                <p class="mb-0">Total Customers</p>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card stat-card bg-success text-white">
+                <i class="bi bi-check-circle" style="font-size: 3rem;"></i>
+                <h3>{{ active_customers }}</h3>
+                <p class="mb-0">Active Customers</p>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card stat-card bg-warning text-white">
+                <i class="bi bi-truck" style="font-size: 3rem;"></i>
+                <h3>{{ today_pickups }}</h3>
+                <p class="mb-0">Today's Pickups</p>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card stat-card bg-info text-white">
+                <i class="bi bi-check2-square" style="font-size: 3rem;"></i>
+                <h3>{{ completed_pickups }}</h3>
+                <p class="mb-0">Completed Today</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-layout-text-sidebar-reverse"></i> Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('add_customer') }}" class="btn btn-primary">
+                            <i class="bi bi-person-plus"></i> Add New Customer
+                        </a>
+                        <a href="{{ url_for('admin_customers') }}" class="btn btn-outline-primary">
+                            <i class="bi bi-people"></i> View All Customers
+                        </a>
+                        <a href="{{ url_for('admin_pickups') }}" class="btn btn-outline-primary">
+                            <i class="bi bi-truck"></i> View Today's Pickups
+                        </a>
+                        <a href="{{ url_for('add_user') }}" class="btn btn-outline-primary">
+                            <i class="bi bi-person-badge"></i> Add New User
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="bi bi-info-circle"></i> System Information</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>Today's Date:</strong> {{ now().strftime('%B %d, %Y') }}</p>
+                    <p><strong>Day:</strong> {{ now().strftime('%A') }}</p>
+                    <p><strong>Logged in as:</strong> {{ session.username }} (Admin)</p>
+                    <hr>
+                    <p class="text-muted mb-0">
+                        <small>
+                            This system manages waste collection operations including customer data,
+                            pickup schedules, and user management.
+                        </small>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

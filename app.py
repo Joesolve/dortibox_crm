@@ -1,0 +1,478 @@
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime, date
+import pandas as pd
+import os
+from functools import wraps
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'your-secret-key-change-in-production'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///waste_collection.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)
+
+# Make datetime available in templates
+@app.context_processor
+def inject_now():
+    return {'now': datetime.now}
+
+# ==================== DATABASE MODELS ====================
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash = db.Column(db.String(200), nullable=False)
+    role = db.Column(db.String(20), nullable=False)  # 'admin' or 'collector'
+    full_name = db.Column(db.String(100))
+    
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+    
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+
+class Customer(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    customer_number = db.Column(db.Integer)
+    customer_name = db.Column(db.String(200), nullable=False)
+    address = db.Column(db.String(300))
+    phone_number = db.Column(db.String(50))
+    type = db.Column(db.String(100))
+    ward = db.Column(db.String(100))
+    bin_size = db.Column(db.String(50))
+    bin_qty = db.Column(db.Integer)
+    frequency = db.Column(db.String(50))
+    time = db.Column(db.String(50))
+    
+    # Days of pickup (1 = pickup day, 0 or NULL = no pickup)
+    monday = db.Column(db.Integer, default=0)
+    tuesday = db.Column(db.Integer, default=0)
+    wednesday = db.Column(db.Integer, default=0)
+    thursday = db.Column(db.Integer, default=0)
+    friday = db.Column(db.Integer, default=0)
+    saturday = db.Column(db.Integer, default=0)
+    
+    sales_rep = db.Column(db.String(100))
+    payment_type = db.Column(db.String(100))
+    subscription_start = db.Column(db.Date)
+    subscription_end = db.Column(db.Date)
+    active = db.Column(db.String(10))  # 'Yes' or 'No'
+    target_month_start = db.Column(db.Date)
+    target_month_end = db.Column(db.Date)
+    month_acquired = db.Column(db.String(50))
+    amount_paid = db.Column(db.Float)
+    
+    pickups = db.relationship('Pickup', backref='customer', lazy=True, cascade='all, delete-orphan')
+
+
+class Pickup(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'), nullable=False)
+    pickup_date = db.Column(db.Date, nullable=False)
+    completed = db.Column(db.Boolean, default=False)
+    completed_at = db.Column(db.DateTime)
+    completed_by = db.Column(db.String(100))
+    notes = db.Column(db.Text)
+
+
+# ==================== AUTHENTICATION DECORATORS ====================
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            flash('Please log in to access this page.', 'warning')
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            flash('Please log in to access this page.', 'warning')
+            return redirect(url_for('login'))
+        user = User.query.get(session['user_id'])
+        if user.role != 'admin':
+            flash('You do not have permission to access this page.', 'danger')
+            return redirect(url_for('dashboard'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+# ==================== ROUTES ====================
+
+@app.route('/')
+def index():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    return redirect(url_for('login'))
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        user = User.query.filter_by(username=username).first()
+        
+        if user and user.check_password(password):
+            session['user_id'] = user.id
+            session['username'] = user.username
+            session['role'] = user.role
+            flash(f'Welcome back, {user.full_name or user.username}!', 'success')
+            return redirect(url_for('dashboard'))
+        else:
+            flash('Invalid username or password.', 'danger')
+    
+    return render_template('login.html')
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash('You have been logged out.', 'info')
+    return redirect(url_for('login'))
+
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    user = User.query.get(session['user_id'])
+    
+    if user.role == 'admin':
+        total_customers = Customer.query.count()
+        active_customers = Customer.query.filter(
+            (Customer.active == 'Yes') | (Customer.active == 'yes')
+        ).count()
+        
+        # Today's pickups
+        today = date.today()
+        day_name = today.strftime('%A').lower()
+        day_column_map = {
+            'monday': Customer.monday,
+            'tuesday': Customer.tuesday,
+            'wednesday': Customer.wednesday,
+            'thursday': Customer.thursday,
+            'friday': Customer.friday,
+            'saturday': Customer.saturday
+        }
+        
+        day_column = day_column_map.get(day_name)
+        today_pickups = 0
+        completed_pickups = 0
+        
+        if day_column is not None:
+            customers_today = Customer.query.filter(
+                day_column == 1,
+                (Customer.active == 'Yes') | (Customer.active == 'yes')
+            ).all()
+            today_pickups = len(customers_today)
+            
+            completed_pickups = Pickup.query.filter(
+                Pickup.pickup_date == today,
+                Pickup.completed == True
+            ).count()
+        
+        return render_template('admin_dashboard.html', 
+                             total_customers=total_customers,
+                             active_customers=active_customers,
+                             today_pickups=today_pickups,
+                             completed_pickups=completed_pickups)
+    else:
+        # Collector dashboard
+        today = date.today()
+        day_name = today.strftime('%A').lower()
+        
+        day_column_map = {
+            'monday': Customer.monday,
+            'tuesday': Customer.tuesday,
+            'wednesday': Customer.wednesday,
+            'thursday': Customer.thursday,
+            'friday': Customer.friday,
+            'saturday': Customer.saturday
+        }
+        
+        day_column = day_column_map.get(day_name)
+        pickups = []
+        
+        if day_column is not None:
+            customers = Customer.query.filter(
+                day_column == 1,
+                (Customer.active == 'Yes') | (Customer.active == 'yes')
+            ).order_by(Customer.address).all()
+            
+            for customer in customers:
+                # Check if pickup record exists for today
+                pickup = Pickup.query.filter_by(
+                    customer_id=customer.id,
+                    pickup_date=today
+                ).first()
+                
+                # Create pickup record if it doesn't exist
+                if not pickup:
+                    pickup = Pickup(
+                        customer_id=customer.id,
+                        pickup_date=today
+                    )
+                    db.session.add(pickup)
+                
+                pickups.append({
+                    'pickup': pickup,
+                    'customer': customer
+                })
+            
+            db.session.commit()
+        
+        return render_template('collector_dashboard.html', 
+                             pickups=pickups,
+                             today=today)
+
+
+# ==================== ADMIN ROUTES ====================
+
+@app.route('/admin/customers')
+@admin_required
+def admin_customers():
+    page = request.args.get('page', 1, type=int)
+    search = request.args.get('search', '')
+    
+    query = Customer.query
+    
+    if search:
+        query = query.filter(
+            (Customer.customer_name.contains(search)) |
+            (Customer.address.contains(search)) |
+            (Customer.phone_number.contains(search))
+        )
+    
+    customers = query.order_by(Customer.customer_number).paginate(
+        page=page, per_page=20, error_out=False
+    )
+    
+    return render_template('admin_customers.html', customers=customers, search=search)
+
+
+@app.route('/admin/customers/add', methods=['GET', 'POST'])
+@admin_required
+def add_customer():
+    if request.method == 'POST':
+        customer = Customer(
+            customer_number=request.form.get('customer_number', type=int),
+            customer_name=request.form.get('customer_name'),
+            address=request.form.get('address'),
+            phone_number=request.form.get('phone_number'),
+            type=request.form.get('type'),
+            ward=request.form.get('ward'),
+            bin_size=request.form.get('bin_size'),
+            bin_qty=request.form.get('bin_qty', type=int),
+            frequency=request.form.get('frequency'),
+            time=request.form.get('time'),
+            monday=1 if request.form.get('monday') else 0,
+            tuesday=1 if request.form.get('tuesday') else 0,
+            wednesday=1 if request.form.get('wednesday') else 0,
+            thursday=1 if request.form.get('thursday') else 0,
+            friday=1 if request.form.get('friday') else 0,
+            saturday=1 if request.form.get('saturday') else 0,
+            sales_rep=request.form.get('sales_rep'),
+            payment_type=request.form.get('payment_type'),
+            active=request.form.get('active', 'Yes'),
+            month_acquired=request.form.get('month_acquired'),
+            amount_paid=request.form.get('amount_paid', type=float)
+        )
+        
+        # Handle dates
+        if request.form.get('subscription_start'):
+            customer.subscription_start = datetime.strptime(
+                request.form.get('subscription_start'), '%Y-%m-%d'
+            ).date()
+        if request.form.get('subscription_end'):
+            customer.subscription_end = datetime.strptime(
+                request.form.get('subscription_end'), '%Y-%m-%d'
+            ).date()
+        
+        db.session.add(customer)
+        db.session.commit()
+        
+        flash('Customer added successfully!', 'success')
+        return redirect(url_for('admin_customers'))
+    
+    return render_template('add_customer.html')
+
+
+@app.route('/admin/customers/edit/<int:id>', methods=['GET', 'POST'])
+@admin_required
+def edit_customer(id):
+    customer = Customer.query.get_or_404(id)
+    
+    if request.method == 'POST':
+        customer.customer_number = request.form.get('customer_number', type=int)
+        customer.customer_name = request.form.get('customer_name')
+        customer.address = request.form.get('address')
+        customer.phone_number = request.form.get('phone_number')
+        customer.type = request.form.get('type')
+        customer.ward = request.form.get('ward')
+        customer.bin_size = request.form.get('bin_size')
+        customer.bin_qty = request.form.get('bin_qty', type=int)
+        customer.frequency = request.form.get('frequency')
+        customer.time = request.form.get('time')
+        customer.monday = 1 if request.form.get('monday') else 0
+        customer.tuesday = 1 if request.form.get('tuesday') else 0
+        customer.wednesday = 1 if request.form.get('wednesday') else 0
+        customer.thursday = 1 if request.form.get('thursday') else 0
+        customer.friday = 1 if request.form.get('friday') else 0
+        customer.saturday = 1 if request.form.get('saturday') else 0
+        customer.sales_rep = request.form.get('sales_rep')
+        customer.payment_type = request.form.get('payment_type')
+        customer.active = request.form.get('active')
+        customer.month_acquired = request.form.get('month_acquired')
+        customer.amount_paid = request.form.get('amount_paid', type=float)
+        
+        # Handle dates
+        if request.form.get('subscription_start'):
+            customer.subscription_start = datetime.strptime(
+                request.form.get('subscription_start'), '%Y-%m-%d'
+            ).date()
+        if request.form.get('subscription_end'):
+            customer.subscription_end = datetime.strptime(
+                request.form.get('subscription_end'), '%Y-%m-%d'
+            ).date()
+        
+        db.session.commit()
+        flash('Customer updated successfully!', 'success')
+        return redirect(url_for('admin_customers'))
+    
+    return render_template('edit_customer.html', customer=customer)
+
+
+@app.route('/admin/customers/delete/<int:id>', methods=['POST'])
+@admin_required
+def delete_customer(id):
+    customer = Customer.query.get_or_404(id)
+    db.session.delete(customer)
+    db.session.commit()
+    flash('Customer deleted successfully!', 'success')
+    return redirect(url_for('admin_customers'))
+
+
+@app.route('/admin/pickups')
+@admin_required
+def admin_pickups():
+    date_filter = request.args.get('date', date.today().isoformat())
+    filter_date = datetime.strptime(date_filter, '%Y-%m-%d').date()
+    
+    pickups = Pickup.query.filter_by(pickup_date=filter_date).join(Customer).order_by(
+        Pickup.completed, Customer.address
+    ).all()
+    
+    return render_template('admin_pickups.html', pickups=pickups, filter_date=filter_date)
+
+
+@app.route('/admin/users')
+@admin_required
+def admin_users():
+    users = User.query.all()
+    return render_template('admin_users.html', users=users)
+
+
+@app.route('/admin/users/add', methods=['GET', 'POST'])
+@admin_required
+def add_user():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        role = request.form.get('role')
+        full_name = request.form.get('full_name')
+        
+        if User.query.filter_by(username=username).first():
+            flash('Username already exists!', 'danger')
+        else:
+            user = User(username=username, role=role, full_name=full_name)
+            user.set_password(password)
+            db.session.add(user)
+            db.session.commit()
+            flash('User added successfully!', 'success')
+            return redirect(url_for('admin_users'))
+    
+    return render_template('add_user.html')
+
+
+@app.route('/admin/users/delete/<int:id>', methods=['POST'])
+@admin_required
+def delete_user(id):
+    if id == session.get('user_id'):
+        flash('You cannot delete your own account!', 'danger')
+    else:
+        user = User.query.get_or_404(id)
+        db.session.delete(user)
+        db.session.commit()
+        flash('User deleted successfully!', 'success')
+    return redirect(url_for('admin_users'))
+
+
+# ==================== COLLECTOR ROUTES ====================
+
+@app.route('/collector/complete/<int:pickup_id>', methods=['POST'])
+@login_required
+def complete_pickup(pickup_id):
+    pickup = Pickup.query.get_or_404(pickup_id)
+    user = User.query.get(session['user_id'])
+    
+    data = request.get_json()
+    notes = data.get('notes', '')
+    
+    pickup.completed = True
+    pickup.completed_at = datetime.now()
+    pickup.completed_by = user.full_name or user.username
+    pickup.notes = notes
+    
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Pickup marked as completed!'})
+
+
+@app.route('/collector/uncomplete/<int:pickup_id>', methods=['POST'])
+@login_required
+def uncomplete_pickup(pickup_id):
+    pickup = Pickup.query.get_or_404(pickup_id)
+    
+    pickup.completed = False
+    pickup.completed_at = None
+    pickup.completed_by = None
+    pickup.notes = None
+    
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': 'Pickup marked as incomplete!'})
+
+
+# ==================== INITIALIZATION ====================
+
+def init_database():
+    """Initialize the database with sample data"""
+    with app.app_context():
+        db.create_all()
+        
+        # Create admin user if not exists
+        if not User.query.filter_by(username='admin').first():
+            admin = User(username='admin', role='admin', full_name='Administrator')
+            admin.set_password('admin123')
+            db.session.add(admin)
+        
+        # Create collector user if not exists
+        if not User.query.filter_by(username='collector').first():
+            collector = User(username='collector', role='collector', full_name='Collector User')
+            collector.set_password('collector123')
+            db.session.add(collector)
+        
+        db.session.commit()
+
+
+if __name__ == '__main__':
+    init_database()
+    app.run(debug=True, host='0.0.0.0', port=5000)
