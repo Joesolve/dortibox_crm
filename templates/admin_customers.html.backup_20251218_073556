@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Customers{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1><i class="bi bi-people"></i> Manage Customers</h1>
+        <a href="{{ url_for('add_customer') }}" class="btn btn-primary">
+            <i class="bi bi-person-plus"></i> Add Customer
+        </a>
+    </div>
+    
+    <div class="card">
+        <div class="card-body">
+            <form method="GET" class="row g-3 mb-3">
+                <div class="col-md-10">
+                    <input type="text" class="form-control" name="search" 
+                           placeholder="Search by name, address, or phone..." 
+                           value="{{ search }}">
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-search"></i> Search
+                    </button>
+                </div>
+            </form>
+            
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Customer Name</th>
+                            <th>Address</th>
+                            <th>Phone</th>
+                            <th>Ward</th>
+                            <th>Bin Size</th>
+                            <th>Schedule</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for customer in customers.items %}
+                        <tr>
+                            <td>{{ customer.customer_number or '-' }}</td>
+                            <td><strong>{{ customer.customer_name }}</strong></td>
+                            <td>{{ customer.address or '-' }}</td>
+                            <td>{{ customer.phone_number or '-' }}</td>
+                            <td>{{ customer.ward or '-' }}</td>
+                            <td>{{ customer.bin_qty or 0 }} x {{ customer.bin_size or 'N/A' }}</td>
+                            <td>
+                                <small>
+                                    {% if customer.monday %}M{% endif %}
+                                    {% if customer.tuesday %}T{% endif %}
+                                    {% if customer.wednesday %}W{% endif %}
+                                    {% if customer.thursday %}Th{% endif %}
+                                    {% if customer.friday %}F{% endif %}
+                                    {% if customer.saturday %}S{% endif %}
+                                </small>
+                            </td>
+                            <td>
+                                {% if customer.active in ['Yes', 'yes'] %}
+                                <span class="badge bg-success">Active</span>
+                                {% else %}
+                                <span class="badge bg-danger">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td class="table-actions">
+                                <a href="{{ url_for('edit_customer', id=customer.id) }}" 
+                                   class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <form method="POST" action="{{ url_for('delete_customer', id=customer.id) }}" 
+                                      style="display:inline;" 
+                                      onsubmit="return confirm('Are you sure you want to delete this customer?');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            {% if customers.pages > 1 %}
+            <nav>
+                <ul class="pagination justify-content-center">
+                    <li class="page-item {% if not customers.has_prev %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('admin_customers', page=customers.prev_num, search=search) }}">
+                            Previous
+                        </a>
+                    </li>
+                    
+                    {% for page_num in customers.iter_pages(left_edge=1, right_edge=1, left_current=1, right_current=2) %}
+                        {% if page_num %}
+                            <li class="page-item {% if page_num == customers.page %}active{% endif %}">
+                                <a class="page-link" href="{{ url_for('admin_customers', page=page_num, search=search) }}">
+                                    {{ page_num }}
+                                </a>
+                            </li>
+                        {% else %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                    {% endfor %}
+                    
+                    <li class="page-item {% if not customers.has_next %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('admin_customers', page=customers.next_num, search=search) }}">
+                            Next
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
