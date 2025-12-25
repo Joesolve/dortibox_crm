@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_file
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 import pandas as pd
 import os
 from functools import wraps
@@ -14,13 +14,10 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# Make datetime and abs available in templates
+# Make datetime available in templates
 @app.context_processor
 def inject_now():
-    return {
-        'now': datetime.now,
-        'abs': abs  # Add abs function
-    }
+    return {'now': datetime.now}
 
 # ==================== DATABASE MODELS ====================
 
@@ -69,29 +66,6 @@ class Customer(db.Model):
     amount_paid = db.Column(db.Float)
     
     pickups = db.relationship('Pickup', backref='customer', lazy=True, cascade='all, delete-orphan')
-    
-    def subscription_status(self):
-        """Return subscription status"""
-        if not self.subscription_end:
-            return 'no_date'
-        
-        today = date.today()
-        days_until_end = (self.subscription_end - today).days
-        
-        if days_until_end < 0:
-            return 'expired'
-        elif days_until_end <= 7:
-            return 'expiring_week'
-        elif days_until_end <= 30:
-            return 'expiring_month'
-        else:
-            return 'active'
-    
-    def days_until_expiry(self):
-        """Return days until expiry"""
-        if not self.subscription_end:
-            return None
-        return (self.subscription_end - date.today()).days
 
 
 class Pickup(db.Model):
@@ -165,29 +139,6 @@ def logout():
     flash('You have been logged out.', 'info')
     return redirect(url_for('login'))
 
-@app.route('/change-password', methods=['GET', 'POST'])
-@login_required
-def change_password():
-    if request.method == 'POST':
-        current_password = request.form.get('current_password')
-        new_password = request.form.get('new_password')
-        confirm_password = request.form.get('confirm_password')
-        
-        user = User.query.get(session['user_id'])
-        
-        if not user.check_password(current_password):
-            flash('Current password is incorrect.', 'danger')
-        elif new_password != confirm_password:
-            flash('New passwords do not match.', 'danger')
-        elif len(new_password) < 6:
-            flash('Password must be at least 6 characters.', 'danger')
-        else:
-            user.set_password(new_password)
-            db.session.commit()
-            flash('Password changed successfully!', 'success')
-            return redirect(url_for('dashboard'))
-    
-    return render_template('change_password.html')
 
 @app.route('/dashboard')
 @login_required
@@ -200,22 +151,7 @@ def dashboard():
             (Customer.active == 'Yes') | (Customer.active == 'yes')
         ).count()
         
-        # Count expiring subscriptions
         today = date.today()
-        thirty_days = today + timedelta(days=30)
-        expiring_soon = Customer.query.filter(
-            Customer.subscription_end.isnot(None),
-            Customer.subscription_end <= thirty_days,
-            Customer.subscription_end >= today
-        ).count()
-        
-        # Count expired subscriptions
-        expired = Customer.query.filter(
-            Customer.subscription_end.isnot(None),
-            Customer.subscription_end < today
-        ).count()
-        
-        # Today's pickups
         day_name = today.strftime('%A').lower()
         day_column_map = {
             'monday': Customer.monday,
@@ -246,9 +182,7 @@ def dashboard():
                              total_customers=total_customers,
                              active_customers=active_customers,
                              today_pickups=today_pickups,
-                             completed_pickups=completed_pickups,
-                             expiring_soon=expiring_soon,
-                             expired=expired)
+                             completed_pickups=completed_pickups)
     else:
         today = date.today()
         day_name = today.strftime('%A').lower()
@@ -305,7 +239,6 @@ def admin_customers():
     search = request.args.get('search', '')
     ward_filter = request.args.get('ward', '')
     status_filter = request.args.get('status', '')
-    subscription_filter = request.args.get('subscription', '')
     
     query = Customer.query
     
@@ -324,30 +257,6 @@ def admin_customers():
     elif status_filter == 'inactive':
         query = query.filter(Customer.active == 'No')
     
-    # Subscription filter
-    today = date.today()
-    if subscription_filter == 'expired':
-        query = query.filter(
-            Customer.subscription_end.isnot(None),
-            Customer.subscription_end < today
-        )
-    elif subscription_filter == 'expiring_week':
-        week_from_now = today + timedelta(days=7)
-        query = query.filter(
-            Customer.subscription_end.isnot(None),
-            Customer.subscription_end >= today,
-            Customer.subscription_end <= week_from_now
-        )
-    elif subscription_filter == 'expiring_month':
-        month_from_now = today + timedelta(days=30)
-        query = query.filter(
-            Customer.subscription_end.isnot(None),
-            Customer.subscription_end >= today,
-            Customer.subscription_end <= month_from_now
-        )
-    elif subscription_filter == 'no_date':
-        query = query.filter(Customer.subscription_end.is_(None))
-    
     customers = query.order_by(Customer.customer_number).paginate(
         page=page, per_page=20, error_out=False
     )
@@ -360,9 +269,7 @@ def admin_customers():
                          search=search,
                          ward_filter=ward_filter,
                          status_filter=status_filter,
-                         subscription_filter=subscription_filter,
-                         wards=wards,
-                         today=today)
+                         wards=wards)
 
 
 @app.route('/admin/customers/bulk-delete', methods=['POST'])
@@ -386,54 +293,12 @@ def bulk_delete_customers():
     return redirect(url_for('admin_customers'))
 
 
-@app.route('/admin/customers/bulk-extend', methods=['POST'])
-@admin_required
-def bulk_extend_subscriptions():
-    """Bulk extend subscription end dates"""
-    customer_ids = request.form.getlist('customer_ids[]')
-    months = request.form.get('extend_months', type=int)
-    
-    if not customer_ids:
-        flash('No customers selected.', 'warning')
-        return redirect(url_for('admin_customers'))
-    
-    if not months or months < 1:
-        flash('Please specify number of months to extend.', 'warning')
-        return redirect(url_for('admin_customers'))
-    
-    try:
-        customer_ids = [int(id) for id in customer_ids]
-        customers = Customer.query.filter(Customer.id.in_(customer_ids)).all()
-        
-        extended_count = 0
-        for customer in customers:
-            if customer.subscription_end:
-                # Extend from current end date
-                customer.subscription_end = customer.subscription_end + timedelta(days=30 * months)
-            else:
-                # If no end date, set from today
-                customer.subscription_end = date.today() + timedelta(days=30 * months)
-            
-            # Ensure customer is active
-            customer.active = 'Yes'
-            extended_count += 1
-        
-        db.session.commit()
-        flash(f'Successfully extended subscriptions for {extended_count} customer(s) by {months} month(s).', 'success')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Error extending subscriptions: {str(e)}', 'danger')
-    
-    return redirect(url_for('admin_customers'))
-
-
 @app.route('/admin/customers/export')
 @admin_required
 def export_customers():
     search = request.args.get('search', '')
     ward_filter = request.args.get('ward', '')
     status_filter = request.args.get('status', '')
-    subscription_filter = request.args.get('subscription', '')
     
     query = Customer.query
     
@@ -452,43 +317,10 @@ def export_customers():
     elif status_filter == 'inactive':
         query = query.filter(Customer.active == 'No')
     
-    # Apply subscription filter
-    today = date.today()
-    if subscription_filter == 'expired':
-        query = query.filter(
-            Customer.subscription_end.isnot(None),
-            Customer.subscription_end < today
-        )
-    elif subscription_filter == 'expiring_week':
-        week_from_now = today + timedelta(days=7)
-        query = query.filter(
-            Customer.subscription_end.isnot(None),
-            Customer.subscription_end >= today,
-            Customer.subscription_end <= week_from_now
-        )
-    elif subscription_filter == 'expiring_month':
-        month_from_now = today + timedelta(days=30)
-        query = query.filter(
-            Customer.subscription_end.isnot(None),
-            Customer.subscription_end >= today,
-            Customer.subscription_end <= month_from_now
-        )
-    elif subscription_filter == 'no_date':
-        query = query.filter(Customer.subscription_end.is_(None))
-    
     customers = query.order_by(Customer.customer_number).all()
     
     data = []
     for c in customers:
-        # Calculate days until expiry
-        days_until_expiry = ''
-        if c.subscription_end:
-            days = (c.subscription_end - today).days
-            if days < 0:
-                days_until_expiry = f'EXPIRED {abs(days)} days ago'
-            else:
-                days_until_expiry = f'{days} days remaining'
-        
         data.append({
             'Number': c.customer_number,
             'Customer Name': c.customer_name,
@@ -510,7 +342,6 @@ def export_customers():
             'Payment Type': c.payment_type,
             'Subscription Start': c.subscription_start.strftime('%Y-%m-%d') if c.subscription_start else '',
             'Subscription End': c.subscription_end.strftime('%Y-%m-%d') if c.subscription_end else '',
-            'Days Until Expiry': days_until_expiry,
             'Active': c.active,
             'Month Acquired': c.month_acquired,
             'Amount Paid SLL': c.amount_paid
@@ -640,43 +471,6 @@ def admin_pickups():
     date_filter = request.args.get('date', date.today().isoformat())
     filter_date = datetime.strptime(date_filter, '%Y-%m-%d').date()
     
-    # Get the day of week for the filter date
-    day_name = filter_date.strftime('%A').lower()
-    day_column_map = {
-        'monday': Customer.monday,
-        'tuesday': Customer.tuesday,
-        'wednesday': Customer.wednesday,
-        'thursday': Customer.thursday,
-        'friday': Customer.friday,
-        'saturday': Customer.saturday
-    }
-    
-    day_column = day_column_map.get(day_name)
-    
-    # Get all active customers scheduled for this day
-    if day_column is not None:
-        customers_for_day = Customer.query.filter(
-            day_column == 1,
-            (Customer.active == 'Yes') | (Customer.active == 'yes')
-        ).all()
-        
-        # Create pickup records if they don't exist
-        for customer in customers_for_day:
-            existing_pickup = Pickup.query.filter_by(
-                customer_id=customer.id,
-                pickup_date=filter_date
-            ).first()
-            
-            if not existing_pickup:
-                pickup = Pickup(
-                    customer_id=customer.id,
-                    pickup_date=filter_date
-                )
-                db.session.add(pickup)
-        
-        db.session.commit()
-    
-    # Now get all pickups for the filter date
     pickups = Pickup.query.filter_by(pickup_date=filter_date).join(Customer).order_by(
         Pickup.completed, Customer.address
     ).all()
