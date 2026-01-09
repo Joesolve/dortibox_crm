@@ -538,8 +538,12 @@ def export_customers():
 @admin_required
 def add_customer():
     if request.method == 'POST':
+        # Auto-generate customer number
+        max_number = db.session.query(db.func.max(Customer.customer_number)).scalar()
+        next_number = (max_number or 0) + 1
+        
         customer = Customer(
-            customer_number=request.form.get('customer_number', type=int),
+            customer_number=next_number,  # Auto-generated
             customer_name=request.form.get('customer_name'),
             address=request.form.get('address'),
             phone_number=request.form.get('phone_number'),
@@ -574,10 +578,14 @@ def add_customer():
         db.session.add(customer)
         db.session.commit()
         
-        flash('Customer added successfully!', 'success')
+        flash(f'Customer added successfully! Customer #{next_number}', 'success')
         return redirect(url_for('admin_customers'))
     
-    return render_template('add_customer.html')
+    # Get next customer number for display
+    max_number = db.session.query(db.func.max(Customer.customer_number)).scalar()
+    next_number = (max_number or 0) + 1
+    
+    return render_template('add_customer.html', next_number=next_number)
 
 
 @app.route('/admin/customers/edit/<int:id>', methods=['GET', 'POST'])

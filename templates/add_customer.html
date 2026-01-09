@@ -19,8 +19,9 @@
                         <h5 class="mb-3">Basic Information</h5>
                         
                         <div class="mb-3">
-                            <label for="customer_number" class="form-label">Customer Number</label>
-                            <input type="number" class="form-control" id="customer_number" name="customer_number">
+                            <label class="form-label">Customer Number</label>
+                            <input type="text" class="form-control" value="#{{ next_number }}" disabled>
+                            <small class="text-muted">Auto-generated</small>
                         </div>
                         
                         <div class="mb-3">
@@ -40,12 +41,24 @@
                         
                         <div class="mb-3">
                             <label for="type" class="form-label">Type</label>
-                            <input type="text" class="form-control" id="type" name="type">
+                            <select class="form-select" id="type" name="type">
+                                <option value="">Select Type...</option>
+                                <option value="Domestic">Domestic</option>
+                                <option value="Commercial">Commercial</option>
+                            </select>
                         </div>
                         
                         <div class="mb-3">
                             <label for="ward" class="form-label">Ward</label>
-                            <input type="text" class="form-control" id="ward" name="ward">
+                            <select class="form-select" id="ward" name="ward">
+                                <option value="">Select Ward...</option>
+                                <option value="429">429</option>
+                                <option value="430">430</option>
+                                <option value="431">431</option>
+                                <option value="432">432</option>
+                                <option value="433">433</option>
+                                <option value="434">434</option>
+                            </select>
                         </div>
                     </div>
                     
@@ -55,22 +68,31 @@
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label for="bin_size" class="form-label">Bin Size</label>
-                                <input type="text" class="form-control" id="bin_size" name="bin_size">
+                                <select class="form-select" id="bin_size" name="bin_size">
+                                    <option value="">Select Size...</option>
+                                    <option value="50">50</option>
+                                    <option value="120">120</option>
+                                    <option value="250">250</option>
+                                    <option value="300">300</option>
+                                    <option value="Bulk">Bulk</option>
+                                </select>
                             </div>
                             <div class="col-md-6">
                                 <label for="bin_qty" class="form-label">Bin Quantity</label>
-                                <input type="number" class="form-control" id="bin_qty" name="bin_qty">
+                                <input type="number" class="form-control" id="bin_qty" name="bin_qty" min="0">
                             </div>
                         </div>
                         
                         <div class="mb-3">
                             <label for="frequency" class="form-label">Frequency</label>
-                            <input type="text" class="form-control" id="frequency" name="frequency">
+                            <input type="text" class="form-control" id="frequency" name="frequency" 
+                                   placeholder="e.g., Daily, Weekly, Twice a week">
                         </div>
                         
                         <div class="mb-3">
                             <label for="time" class="form-label">Pickup Time</label>
-                            <input type="text" class="form-control" id="time" name="time">
+                            <input type="text" class="form-control" id="time" name="time" 
+                                   placeholder="e.g., 8:00 AM, Morning, Afternoon">
                         </div>
                         
                         <div class="mb-3">
@@ -111,22 +133,46 @@
                         
                         <div class="mb-3">
                             <label for="sales_rep" class="form-label">Sales Representative</label>
-                            <input type="text" class="form-control" id="sales_rep" name="sales_rep">
+                            <select class="form-select" id="sales_rep" name="sales_rep">
+                                <option value="">Select Sales Rep...</option>
+                                <option value="IB">IB</option>
+                                <option value="Maystead">Maystead</option>
+                                <option value="Hawa">Hawa</option>
+                                <option value="Anthony">Anthony</option>
+                            </select>
                         </div>
                         
                         <div class="mb-3">
                             <label for="payment_type" class="form-label">Payment Type</label>
-                            <input type="text" class="form-control" id="payment_type" name="payment_type">
+                            <select class="form-select" id="payment_type" name="payment_type">
+                                <option value="">Select Payment Type...</option>
+                                <option value="Prepaid">Prepaid</option>
+                                <option value="Postpaid">Postpaid</option>
+                            </select>
                         </div>
                         
                         <div class="mb-3">
                             <label for="amount_paid" class="form-label">Amount Paid (SLL)</label>
-                            <input type="number" step="0.01" class="form-control" id="amount_paid" name="amount_paid">
+                            <input type="number" step="0.01" class="form-control" id="amount_paid" name="amount_paid" min="0">
                         </div>
                         
                         <div class="mb-3">
                             <label for="month_acquired" class="form-label">Month Acquired</label>
-                            <input type="text" class="form-control" id="month_acquired" name="month_acquired">
+                            <select class="form-select" id="month_acquired" name="month_acquired">
+                                <option value="">Select Month...</option>
+                                <option value="January">January</option>
+                                <option value="February">February</option>
+                                <option value="March">March</option>
+                                <option value="April">April</option>
+                                <option value="May">May</option>
+                                <option value="June">June</option>
+                                <option value="July">July</option>
+                                <option value="August">August</option>
+                                <option value="September">September</option>
+                                <option value="October">October</option>
+                                <option value="November">November</option>
+                                <option value="December">December</option>
+                            </select>
                         </div>
                     </div>
                     

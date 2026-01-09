@@ -19,9 +19,9 @@
                         <h5 class="mb-3">Basic Information</h5>
                         
                         <div class="mb-3">
-                            <label for="customer_number" class="form-label">Customer Number</label>
-                            <input type="number" class="form-control" id="customer_number" name="customer_number" 
-                                   value="{{ customer.customer_number }}">
+                            <label class="form-label">Customer Number</label>
+                            <input type="text" class="form-control" value="#{{ customer.customer_number }}" disabled>
+                            <small class="text-muted">Cannot be changed</small>
                         </div>
                         
                         <div class="mb-3">
@@ -43,14 +43,24 @@
                         
                         <div class="mb-3">
                             <label for="type" class="form-label">Type</label>
-                            <input type="text" class="form-control" id="type" name="type" 
-                                   value="{{ customer.type }}">
+                            <select class="form-select" id="type" name="type">
+                                <option value="">Select Type...</option>
+                                <option value="Domestic" {% if customer.type == 'Domestic' %}selected{% endif %}>Domestic</option>
+                                <option value="Commercial" {% if customer.type == 'Commercial' %}selected{% endif %}>Commercial</option>
+                            </select>
                         </div>
                         
                         <div class="mb-3">
                             <label for="ward" class="form-label">Ward</label>
-                            <input type="text" class="form-control" id="ward" name="ward" 
-                                   value="{{ customer.ward }}">
+                            <select class="form-select" id="ward" name="ward">
+                                <option value="">Select Ward...</option>
+                                <option value="429" {% if customer.ward == '429' %}selected{% endif %}>429</option>
+                                <option value="430" {% if customer.ward == '430' %}selected{% endif %}>430</option>
+                                <option value="431" {% if customer.ward == '431' %}selected{% endif %}>431</option>
+                                <option value="432" {% if customer.ward == '432' %}selected{% endif %}>432</option>
+                                <option value="433" {% if customer.ward == '433' %}selected{% endif %}>433</option>
+                                <option value="434" {% if customer.ward == '434' %}selected{% endif %}>434</option>
+                            </select>
                         </div>
                     </div>
                     
@@ -60,26 +70,32 @@
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label for="bin_size" class="form-label">Bin Size</label>
-                                <input type="text" class="form-control" id="bin_size" name="bin_size" 
-                                       value="{{ customer.bin_size }}">
+                                <select class="form-select" id="bin_size" name="bin_size">
+                                    <option value="">Select Size...</option>
+                                    <option value="50" {% if customer.bin_size == '50' %}selected{% endif %}>50</option>
+                                    <option value="120" {% if customer.bin_size == '120' %}selected{% endif %}>120</option>
+                                    <option value="250" {% if customer.bin_size == '250' %}selected{% endif %}>250</option>
+                                    <option value="300" {% if customer.bin_size == '300' %}selected{% endif %}>300</option>
+                                    <option value="Bulk" {% if customer.bin_size == 'Bulk' %}selected{% endif %}>Bulk</option>
+                                </select>
                             </div>
                             <div class="col-md-6">
                                 <label for="bin_qty" class="form-label">Bin Quantity</label>
                                 <input type="number" class="form-control" id="bin_qty" name="bin_qty" 
-                                       value="{{ customer.bin_qty }}">
+                                       value="{{ customer.bin_qty }}" min="0">
                             </div>
                         </div>
                         
                         <div class="mb-3">
                             <label for="frequency" class="form-label">Frequency</label>
                             <input type="text" class="form-control" id="frequency" name="frequency" 
-                                   value="{{ customer.frequency }}">
+                                   value="{{ customer.frequency }}" placeholder="e.g., Daily, Weekly, Twice a week">
                         </div>
                         
                         <div class="mb-3">
                             <label for="time" class="form-label">Pickup Time</label>
                             <input type="text" class="form-control" id="time" name="time" 
-                                   value="{{ customer.time }}">
+                                   value="{{ customer.time }}" placeholder="e.g., 8:00 AM, Morning, Afternoon">
                         </div>
                         
                         <div class="mb-3">
@@ -126,26 +142,47 @@
                         
                         <div class="mb-3">
                             <label for="sales_rep" class="form-label">Sales Representative</label>
-                            <input type="text" class="form-control" id="sales_rep" name="sales_rep" 
-                                   value="{{ customer.sales_rep }}">
+                            <select class="form-select" id="sales_rep" name="sales_rep">
+                                <option value="">Select Sales Rep...</option>
+                                <option value="IB" {% if customer.sales_rep == 'IB' %}selected{% endif %}>IB</option>
+                                <option value="Maystead" {% if customer.sales_rep == 'Maystead' %}selected{% endif %}>Maystead</option>
+                                <option value="Hawa" {% if customer.sales_rep == 'Hawa' %}selected{% endif %}>Hawa</option>
+                                <option value="Anthony" {% if customer.sales_rep == 'Anthony' %}selected{% endif %}>Anthony</option>
+                            </select>
                         </div>
                         
                         <div class="mb-3">
                             <label for="payment_type" class="form-label">Payment Type</label>
-                            <input type="text" class="form-control" id="payment_type" name="payment_type" 
-                                   value="{{ customer.payment_type }}">
+                            <select class="form-select" id="payment_type" name="payment_type">
+                                <option value="">Select Payment Type...</option>
+                                <option value="Prepaid" {% if customer.payment_type == 'Prepaid' %}selected{% endif %}>Prepaid</option>
+                                <option value="Postpaid" {% if customer.payment_type == 'Postpaid' %}selected{% endif %}>Postpaid</option>
+                            </select>
                         </div>
                         
                         <div class="mb-3">
                             <label for="amount_paid" class="form-label">Amount Paid (SLL)</label>
                             <input type="number" step="0.01" class="form-control" id="amount_paid" name="amount_paid" 
-                                   value="{{ customer.amount_paid }}">
+                                   value="{{ customer.amount_paid }}" min="0">
                         </div>
                         
                         <div class="mb-3">
                             <label for="month_acquired" class="form-label">Month Acquired</label>
-                            <input type="text" class="form-control" id="month_acquired" name="month_acquired" 
-                                   value="{{ customer.month_acquired }}">
+                            <select class="form-select" id="month_acquired" name="month_acquired">
+                                <option value="">Select Month...</option>
+                                <option value="January" {% if customer.month_acquired == 'January' %}selected{% endif %}>January</option>
+                                <option value="February" {% if customer.month_acquired == 'February' %}selected{% endif %}>February</option>
+                                <option value="March" {% if customer.month_acquired == 'March' %}selected{% endif %}>March</option>
+                                <option value="April" {% if customer.month_acquired == 'April' %}selected{% endif %}>April</option>
+                                <option value="May" {% if customer.month_acquired == 'May' %}selected{% endif %}>May</option>
+                                <option value="June" {% if customer.month_acquired == 'June' %}selected{% endif %}>June</option>
+                                <option value="July" {% if customer.month_acquired == 'July' %}selected{% endif %}>July</option>
+                                <option value="August" {% if customer.month_acquired == 'August' %}selected{% endif %}>August</option>
+                                <option value="September" {% if customer.month_acquired == 'September' %}selected{% endif %}>September</option>
+                                <option value="October" {% if customer.month_acquired == 'October' %}selected{% endif %}>October</option>
+                                <option value="November" {% if customer.month_acquired == 'November' %}selected{% endif %}>November</option>
+                                <option value="December" {% if customer.month_acquired == 'December' %}selected{% endif %}>December</option>
+                            </select>
                         </div>
                     </div>
                     
