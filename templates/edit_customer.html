@@ -19,9 +19,10 @@
                         <h5 class="mb-3">Basic Information</h5>
                         
                         <div class="mb-3">
-                            <label class="form-label">Customer Number</label>
-                            <input type="text" class="form-control" value="#{{ customer.customer_number }}" disabled>
-                            <small class="text-muted">Cannot be changed</small>
+                            <label for="customer_number" class="form-label">Customer Number *</label>
+                            <input type="number" class="form-control" id="customer_number" name="customer_number" 
+                                   value="{{ customer.customer_number }}" required>
+                            <small class="text-muted">Sequential numbering (1, 2, 3...)</small>
                         </div>
                         
                         <div class="mb-3">
@@ -67,23 +68,18 @@
                     <div class="col-md-6">
                         <h5 class="mb-3">Service Details</h5>
                         
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="bin_size" class="form-label">Bin Size</label>
-                                <select class="form-select" id="bin_size" name="bin_size">
-                                    <option value="">Select Size...</option>
-                                    <option value="50" {% if customer.bin_size == '50' %}selected{% endif %}>50</option>
-                                    <option value="120" {% if customer.bin_size == '120' %}selected{% endif %}>120</option>
-                                    <option value="250" {% if customer.bin_size == '250' %}selected{% endif %}>250</option>
-                                    <option value="300" {% if customer.bin_size == '300' %}selected{% endif %}>300</option>
-                                    <option value="Bulk" {% if customer.bin_size == 'Bulk' %}selected{% endif %}>Bulk</option>
-                                </select>
-                            </div>
-                            <div class="col-md-6">
-                                <label for="bin_qty" class="form-label">Bin Quantity</label>
-                                <input type="number" class="form-control" id="bin_qty" name="bin_qty" 
-                                       value="{{ customer.bin_qty }}" min="0">
-                            </div>
+                        <div class="mb-3">
+                            <label for="bin_size" class="form-label">Bin Size(s)</label>
+                            <input type="text" class="form-control" id="bin_size" name="bin_size" 
+                                   value="{{ customer.bin_size }}"
+                                   placeholder="e.g., 300L, 50L or 25L or Bulk Waste">
+                            <small class="text-muted">Enter bin sizes separated by commas for multiple sizes</small>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="bin_qty" class="form-label">Total Bin Quantity</label>
+                            <input type="number" class="form-control" id="bin_qty" name="bin_qty" 
+                                   value="{{ customer.bin_qty }}" min="0">
                         </div>
                         
                         <div class="mb-3">
@@ -148,6 +144,8 @@
                                 <option value="Maystead" {% if customer.sales_rep == 'Maystead' %}selected{% endif %}>Maystead</option>
                                 <option value="Hawa" {% if customer.sales_rep == 'Hawa' %}selected{% endif %}>Hawa</option>
                                 <option value="Anthony" {% if customer.sales_rep == 'Anthony' %}selected{% endif %}>Anthony</option>
+                                <option value="Godfrey" {% if customer.sales_rep == 'Godfrey' %}selected{% endif %}>Godfrey</option>
+                                <option value="Customer Care" {% if customer.sales_rep == 'Customer Care' %}selected{% endif %}>Customer Care</option>
                             </select>
                         </div>
                         

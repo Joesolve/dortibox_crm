@@ -46,7 +46,7 @@ class Customer(db.Model):
     phone_number = db.Column(db.String(50))
     type = db.Column(db.String(100))
     ward = db.Column(db.String(100))
-    bin_size = db.Column(db.String(50))
+    bin_size = db.Column(db.String(50))  # Now stores multiple sizes like "300L, 50L"
     bin_qty = db.Column(db.Integer)
     frequency = db.Column(db.String(50))
     time = db.Column(db.String(50))
@@ -378,6 +378,10 @@ def bulk_delete_customers():
         customer_ids = [int(id) for id in customer_ids]
         deleted_count = Customer.query.filter(Customer.id.in_(customer_ids)).delete(synchronize_session=False)
         db.session.commit()
+        
+        # Renumber customers after deletion
+        renumber_customers()
+        
         flash(f'Successfully deleted {deleted_count} customer(s).', 'success')
     except Exception as e:
         db.session.rollback()
@@ -425,6 +429,14 @@ def bulk_extend_subscriptions():
         flash(f'Error extending subscriptions: {str(e)}', 'danger')
     
     return redirect(url_for('admin_customers'))
+
+
+def renumber_customers():
+    """Renumber all customers sequentially"""
+    customers = Customer.query.order_by(Customer.customer_number).all()
+    for idx, customer in enumerate(customers, start=1):
+        customer.customer_number = idx
+    db.session.commit()
 
 
 @app.route('/admin/customers/export')
@@ -549,7 +561,7 @@ def add_customer():
             phone_number=request.form.get('phone_number'),
             type=request.form.get('type'),
             ward=request.form.get('ward'),
-            bin_size=request.form.get('bin_size'),
+            bin_size=request.form.get('bin_size'),  # Now can store multiple sizes
             bin_qty=request.form.get('bin_qty', type=int),
             frequency=request.form.get('frequency'),
             time=request.form.get('time'),
@@ -600,7 +612,7 @@ def edit_customer(id):
         customer.phone_number = request.form.get('phone_number')
         customer.type = request.form.get('type')
         customer.ward = request.form.get('ward')
-        customer.bin_size = request.form.get('bin_size')
+        customer.bin_size = request.form.get('bin_size')  # Can now store multiple sizes
         customer.bin_qty = request.form.get('bin_qty', type=int)
         customer.frequency = request.form.get('frequency')
         customer.time = request.form.get('time')
@@ -638,6 +650,10 @@ def delete_customer(id):
     customer = Customer.query.get_or_404(id)
     db.session.delete(customer)
     db.session.commit()
+    
+    # Renumber customers after deletion
+    renumber_customers()
+    
     flash('Customer deleted successfully!', 'success')
     return redirect(url_for('admin_customers'))
 

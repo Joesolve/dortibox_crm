@@ -65,22 +65,16 @@
                     <div class="col-md-6">
                         <h5 class="mb-3">Service Details</h5>
                         
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="bin_size" class="form-label">Bin Size</label>
-                                <select class="form-select" id="bin_size" name="bin_size">
-                                    <option value="">Select Size...</option>
-                                    <option value="50">50</option>
-                                    <option value="120">120</option>
-                                    <option value="250">250</option>
-                                    <option value="300">300</option>
-                                    <option value="Bulk">Bulk</option>
-                                </select>
-                            </div>
-                            <div class="col-md-6">
-                                <label for="bin_qty" class="form-label">Bin Quantity</label>
-                                <input type="number" class="form-control" id="bin_qty" name="bin_qty" min="0">
-                            </div>
+                        <div class="mb-3">
+                            <label for="bin_size" class="form-label">Bin Size(s)</label>
+                            <input type="text" class="form-control" id="bin_size" name="bin_size" 
+                                   placeholder="e.g., 300L, 50L or 25L or Bulk Waste">
+                            <small class="text-muted">Enter bin sizes separated by commas for multiple sizes</small>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="bin_qty" class="form-label">Total Bin Quantity</label>
+                            <input type="number" class="form-control" id="bin_qty" name="bin_qty" min="0">
                         </div>
                         
                         <div class="mb-3">
@@ -139,6 +133,8 @@
                                 <option value="Maystead">Maystead</option>
                                 <option value="Hawa">Hawa</option>
                                 <option value="Anthony">Anthony</option>
+                                <option value="Godfrey">Godfrey</option>
+                                <option value="Customer Care">Customer Care</option>
                             </select>
                         </div>
                         
