@@ -432,8 +432,9 @@ def bulk_extend_subscriptions():
 
 
 def renumber_customers():
-    """Renumber all customers sequentially"""
-    customers = Customer.query.order_by(Customer.customer_number).all()
+    """Renumber all customers sequentially starting from 1"""
+    # Order by ID to maintain original order, or use created_at if available
+    customers = Customer.query.order_by(Customer.id).all()
     for idx, customer in enumerate(customers, start=1):
         customer.customer_number = idx
     db.session.commit()
@@ -656,6 +657,18 @@ def delete_customer(id):
     renumber_customers()
     
     flash('Customer deleted successfully!', 'success')
+    return redirect(url_for('admin_customers'))
+
+
+@app.route('/admin/customers/renumber', methods=['POST'])
+@admin_required
+def renumber_all_customers():
+    """Manual renumbering route - renumbers all customers sequentially"""
+    try:
+        renumber_customers()
+        flash('All customers have been renumbered successfully!', 'success')
+    except Exception as e:
+        flash(f'Error renumbering customers: {str(e)}', 'danger')
     return redirect(url_for('admin_customers'))
 
 
