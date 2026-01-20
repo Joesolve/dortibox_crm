@@ -606,7 +606,8 @@ def edit_customer(id):
     customer = Customer.query.get_or_404(id)
     
     if request.method == 'POST':
-        customer.customer_number = request.form.get('customer_number', type=int)
+        # Keep the original customer number - DO NOT change it during edit
+        # customer.customer_number stays the same
         customer.customer_name = request.form.get('customer_name')
         customer.address = request.form.get('address')
         customer.phone_number = request.form.get('phone_number')
