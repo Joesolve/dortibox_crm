@@ -1,1 +1,3 @@
 instance/*.db
+# Ignore environment file
+.env
