@@ -14,6 +14,7 @@
     <div class="card">
         <div class="card-body">
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="mb-3">
                     <label for="username" class="form-label">Username *</label>
                     <input type="text" class="form-control" id="username" name="username" required>
@@ -27,8 +28,8 @@
                 
                 <div class="mb-3">
                     <label for="password" class="form-label">Password *</label>
-                    <input type="password" class="form-control" id="password" name="password" required>
-                    <small class="text-muted">Minimum 6 characters</small>
+                    <input type="password" class="form-control" id="password" name="password" required minlength="8">
+                    <small class="text-muted">Minimum 8 characters with letters and numbers</small>
                 </div>
                 
                 <div class="mb-3">

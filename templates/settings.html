@@ -1,0 +1,358 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Waste Collection Management{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <h2 class="mb-4"><i class="fas fa-cog me-2"></i>Settings</h2>
+        </div>
+    </div>
+
+    <!-- Current Database Stats -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title mb-0">Current Customers</h6>
+                            <h2 class="mb-0">{{ customer_count }}</h2>
+                        </div>
+                        <i class="fas fa-users fa-2x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Import Section -->
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-file-excel text-success me-2"></i>Import Data from Excel</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Instructions:</strong> Upload an Excel file with a sheet named <strong>"Service Log"</strong> to update customer data. 
+                        The first row should be a header row, and data should start from row 2.
+                    </div>
+
+                    <form id="uploadForm" enctype="multipart/form-data">
+                        <!-- File Input -->
+                        <div class="mb-4">
+                            <label for="excel_file" class="form-label fw-bold">Select Excel File</label>
+                            <input class="form-control form-control-lg" type="file" id="excel_file" name="excel_file" accept=".xlsx,.xls" required>
+                            <div class="form-text">Accepted formats: .xlsx, .xls</div>
+                        </div>
+
+                        <!-- Import Mode -->
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Import Mode</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="import_mode" id="mode_update" value="update" checked>
+                                <label class="form-check-label" for="mode_update">
+                                    <strong>Update/Add</strong> - Update existing customers and add new ones
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="import_mode" id="mode_replace" value="replace">
+                                <label class="form-check-label text-danger" for="mode_replace">
+                                    <strong>Replace All</strong> - Delete all existing customers and import fresh data
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Buttons -->
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-outline-primary" id="previewBtn" disabled>
+                                <i class="fas fa-eye me-2"></i>Preview
+                            </button>
+                            <button type="submit" class="btn btn-success" id="importBtn" disabled>
+                                <i class="fas fa-upload me-2"></i>Import Data
+                            </button>
+                        </div>
+                    </form>
+
+                    <!-- Preview Section -->
+                    <div id="previewSection" class="mt-4 d-none">
+                        <hr>
+                        <h6><i class="fas fa-search me-2"></i>File Preview</h6>
+                        <div id="previewContent"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Expected Columns -->
+            <div class="card shadow-sm mt-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-columns me-2"></i>Expected Column Names</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-3">Your Excel file's "Service Log" sheet should have these columns:</p>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <ul class="list-unstyled">
+                                <li><i class="fas fa-check text-success me-2"></i><code>Number</code> - Customer number</li>
+                                <li><i class="fas fa-check text-success me-2"></i><code>Customer Name</code> - Customer name</li>
+                                <li><i class="fas fa-check text-success me-2"></i><code>Address</code> - Street address</li>
+                                <li><i class="fas fa-check text-success me-2"></i><code>Type</code> - Domestic/Commercial</li>
+                                <li><i class="fas fa-check text-success me-2"></i><code>Bin Size</code> - Bin size (50, 120, etc.)</li>
+                                <li><i class="fas fa-check text-success me-2"></i><code>Ward</code> - Ward number</li>
+                                <li><i class="fas fa-check text-success me-2"></i><code>Sales Rep</code> - Sales representative</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <ul class="list-unstyled">
+                                <li><i class="fas fa-check text-success me-2"></i><code>Payment Type</code> - Prepaid/Postpaid</li>
+                                <li><i class="fas fa-check text-success me-2"></i><code>Month Acquired</code> - Month acquired</li>
+                                <li><i class="fas fa-check text-success me-2"></i><code>Active in Target Month?</code> - Yes/No</li>
+                                <li><i class="fas fa-check text-success me-2"></i><code>Mon, Tue, Wed, Thurs, Fri, Sat</code> - Pickup days (X = yes)</li>
+                                <li><i class="fas fa-check text-success me-2"></i><code>Subscription End</code> - End date (optional)</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="col-lg-4">
+            <!-- Backup Section -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-download me-2"></i>Backup Data</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Download a backup of all current customer data before making changes.</p>
+                    <form action="{{ url_for('backup_database') }}" method="post">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-outline-secondary w-100">
+                            <i class="fas fa-file-download me-2"></i>Download Backup
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Tips -->
+            <div class="card shadow-sm mt-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-lightbulb text-warning me-2"></i>Tips</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="mb-0">
+                        <li class="mb-2"><strong>Always backup</strong> your data before importing new files.</li>
+                        <li class="mb-2">Use <strong>Preview</strong> to check your file before importing.</li>
+                        <li class="mb-2"><strong>Update/Add</strong> mode matches customers by their Number.</li>
+                        <li class="mb-2"><strong>Replace All</strong> will delete ALL existing customers first.</li>
+                        <li>The header row should be in row 2 (row 1 can have a title).</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Confirmation Modal -->
+<div class="modal fade" id="confirmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-exclamation-triangle text-warning me-2"></i>Confirm Import</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="confirmModalBody">
+                <!-- Content will be set by JavaScript -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="confirmImportBtn">
+                    <i class="fas fa-check me-2"></i>Proceed with Import
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const fileInput = document.getElementById('excel_file');
+    const previewBtn = document.getElementById('previewBtn');
+    const importBtn = document.getElementById('importBtn');
+    const previewSection = document.getElementById('previewSection');
+    const previewContent = document.getElementById('previewContent');
+    const uploadForm = document.getElementById('uploadForm');
+    const confirmModal = new bootstrap.Modal(document.getElementById('confirmModal'));
+    const confirmModalBody = document.getElementById('confirmModalBody');
+    const confirmImportBtn = document.getElementById('confirmImportBtn');
+
+    // Enable buttons when file is selected
+    fileInput.addEventListener('change', function() {
+        const hasFile = this.files.length > 0;
+        previewBtn.disabled = !hasFile;
+        importBtn.disabled = !hasFile;
+        previewSection.classList.add('d-none');
+    });
+
+    // Preview button click
+    previewBtn.addEventListener('click', async function() {
+        const formData = new FormData();
+        formData.append('excel_file', fileInput.files[0]);
+        formData.append('csrf_token', '{{ csrf_token() }}');
+
+        previewBtn.disabled = true;
+        previewBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Loading...';
+
+        try {
+            const response = await fetch('{{ url_for("preview_excel") }}', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                previewContent.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle me-2"></i>${data.error}
+                    </div>
+                `;
+            } else {
+                let sampleHtml = '';
+                if (data.sample_data && data.sample_data.length > 0) {
+                    sampleHtml = `
+                        <h6 class="mt-3">Sample Data (first 5 rows):</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered">
+                                <thead class="table-light">
+                                    <tr>
+                                        ${Object.keys(data.sample_data[0]).map(k => `<th>${k}</th>`).join('')}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${data.sample_data.map(row => `
+                                        <tr>
+                                            ${Object.values(row).map(v => `<td>${v || '-'}</td>`).join('')}
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                }
+
+                previewContent.innerHTML = `
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle me-2"></i>File looks good!
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>Total Customers in File:</strong> ${data.total_customers}</p>
+                            <p><strong>Active Customers:</strong> ${data.active_customers}</p>
+                            <p><strong>Inactive Customers:</strong> ${data.inactive_customers}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Current Database Count:</strong> ${data.current_db_count}</p>
+                        </div>
+                    </div>
+                    ${sampleHtml}
+                `;
+            }
+
+            previewSection.classList.remove('d-none');
+
+        } catch (error) {
+            previewContent.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-circle me-2"></i>Error: ${error.message}
+                </div>
+            `;
+            previewSection.classList.remove('d-none');
+        }
+
+        previewBtn.disabled = false;
+        previewBtn.innerHTML = '<i class="fas fa-eye me-2"></i>Preview';
+    });
+
+    // Form submit
+    uploadForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const importMode = document.querySelector('input[name="import_mode"]:checked').value;
+        
+        if (importMode === 'replace') {
+            confirmModalBody.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Warning!</strong> You selected "Replace All" mode.
+                </div>
+                <p>This will:</p>
+                <ul>
+                    <li><strong>DELETE ALL</strong> existing customer records</li>
+                    <li>Import fresh data from the Excel file</li>
+                    <li>Also delete associated pickup history</li>
+                </ul>
+                <p class="mb-0"><strong>This action cannot be undone!</strong></p>
+            `;
+        } else {
+            confirmModalBody.innerHTML = `
+                <p>This will:</p>
+                <ul>
+                    <li>Update existing customers (matched by customer number)</li>
+                    <li>Add new customers that don't exist</li>
+                    <li>Keep existing customers not in the file</li>
+                </ul>
+                <p class="mb-0">Do you want to proceed?</p>
+            `;
+        }
+
+        confirmModal.show();
+    });
+
+    // Confirm import
+    confirmImportBtn.addEventListener('click', function() {
+        confirmModal.hide();
+
+        // Create actual form and submit
+        const actualForm = document.createElement('form');
+        actualForm.method = 'POST';
+        actualForm.action = '{{ url_for("upload_excel") }}';
+        actualForm.enctype = 'multipart/form-data';
+
+        // Add file input
+        const newFileInput = fileInput.cloneNode(true);
+        newFileInput.style.display = 'none';
+        actualForm.appendChild(newFileInput);
+
+        // Add import mode
+        const modeInput = document.createElement('input');
+        modeInput.type = 'hidden';
+        modeInput.name = 'import_mode';
+        modeInput.value = document.querySelector('input[name="import_mode"]:checked').value;
+        actualForm.appendChild(modeInput);
+
+        // Add CSRF token
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrf_token';
+        csrfInput.value = '{{ csrf_token() }}';
+        actualForm.appendChild(csrfInput);
+
+        // Copy files
+        const dt = new DataTransfer();
+        for (const file of fileInput.files) {
+            dt.items.add(file);
+        }
+        newFileInput.files = dt.files;
+
+        document.body.appendChild(actualForm);
+        actualForm.submit();
+    });
+});
+</script>
+{% endblock %}

@@ -134,11 +134,12 @@ function completePickup(pickupId) {
 
 function submitCompletion() {
     const notes = document.getElementById('pickupNotes').value;
-    
+
     fetch(`/collector/complete/${currentPickupId}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
         },
         body: JSON.stringify({ notes: notes })
     })
@@ -158,6 +159,7 @@ function uncompletePickup(pickupId) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
             }
         })
         .then(response => response.json())

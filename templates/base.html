@@ -83,6 +83,11 @@
                             <i class="bi bi-person-badge"></i> Users
                         </a>
                     </li>
+                    <li class="nav-item">
+                         <a class="nav-link" href="{{ url_for('settings') }}">
+                            <i class="bi fa-cog me-2"></i>Settings
+                         </a>
+                    </li>
                     {% else %}
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('dashboard') }}">
@@ -90,6 +95,7 @@
                         </a>
                     </li>
                     {% endif %}
+                    
                 </ul>
                 <ul class="navbar-nav">
                     <li class="nav-item dropdown">

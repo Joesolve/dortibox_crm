@@ -124,16 +124,16 @@ def reimport_customers(excel_file):
                                 sub_start = datetime.strptime(row['Subscription Start'], '%Y-%m-%d').date()
                             else:
                                 sub_start = row['Subscription Start'].date()
-                        except:
+                        except (ValueError, AttributeError):
                             pass
-                    
+
                     if 'Subscription End' in row and pd.notna(row['Subscription End']):
                         try:
                             if isinstance(row['Subscription End'], str):
                                 sub_end = datetime.strptime(row['Subscription End'], '%Y-%m-%d').date()
                             else:
                                 sub_end = row['Subscription End'].date()
-                        except:
+                        except (ValueError, AttributeError):
                             pass
                     
                     # Get customer name

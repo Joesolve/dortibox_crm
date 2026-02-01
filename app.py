@@ -1,18 +1,29 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_file
 from flask_sqlalchemy import SQLAlchemy
+from flask_wtf.csrf import CSRFProtect
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, date, timedelta
 import pandas as pd
 import os
+import secrets
 from functools import wraps
 from io import BytesIO
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key-change-in-production'
+
+# Security: Use environment variable for secret key, generate random if not set
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///waste_collection.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Session security settings
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
+
 db = SQLAlchemy(app)
+csrf = CSRFProtect(app)
 
 # Make datetime and abs available in templates
 @app.context_processor
@@ -165,6 +176,17 @@ def logout():
     flash('You have been logged out.', 'info')
     return redirect(url_for('login'))
 
+def validate_password(password):
+    """Validate password meets security requirements. Returns (is_valid, error_message)."""
+    if len(password) < 8:
+        return False, 'Password must be at least 8 characters.'
+    if not any(c.isalpha() for c in password):
+        return False, 'Password must contain at least one letter.'
+    if not any(c.isdigit() for c in password):
+        return False, 'Password must contain at least one number.'
+    return True, None
+
+
 @app.route('/change-password', methods=['GET', 'POST'])
 @login_required
 def change_password():
@@ -172,21 +194,23 @@ def change_password():
         current_password = request.form.get('current_password')
         new_password = request.form.get('new_password')
         confirm_password = request.form.get('confirm_password')
-        
+
         user = User.query.get(session['user_id'])
-        
+
         if not user.check_password(current_password):
             flash('Current password is incorrect.', 'danger')
         elif new_password != confirm_password:
             flash('New passwords do not match.', 'danger')
-        elif len(new_password) < 6:
-            flash('Password must be at least 6 characters.', 'danger')
         else:
-            user.set_password(new_password)
-            db.session.commit()
-            flash('Password changed successfully!', 'success')
-            return redirect(url_for('dashboard'))
-    
+            is_valid, error_msg = validate_password(new_password)
+            if not is_valid:
+                flash(error_msg, 'danger')
+            else:
+                user.set_password(new_password)
+                db.session.commit()
+                flash('Password changed successfully!', 'success')
+                return redirect(url_for('dashboard'))
+
     return render_template('change_password.html')
 
 @app.route('/dashboard')
@@ -231,9 +255,15 @@ def dashboard():
         completed_pickups = 0
         
         if day_column is not None:
+            # Only count active customers with non-expired subscriptions
+            today_date = date.today()
             customers_today = Customer.query.filter(
                 day_column == 1,
-                (Customer.active == 'Yes') | (Customer.active == 'yes')
+                (Customer.active == 'Yes') | (Customer.active == 'yes'),
+                db.or_(
+                    Customer.subscription_end.is_(None),  # No end date
+                    Customer.subscription_end >= today_date  # Or not expired
+                )
             ).all()
             today_pickups = len(customers_today)
             
@@ -266,9 +296,15 @@ def dashboard():
         pickups = []
         
         if day_column is not None:
+            # Only show active customers with non-expired subscriptions
+            today_date = date.today()
             customers = Customer.query.filter(
                 day_column == 1,
-                (Customer.active == 'Yes') | (Customer.active == 'yes')
+                (Customer.active == 'Yes') | (Customer.active == 'yes'),
+                db.or_(
+                    Customer.subscription_end.is_(None),  # No end date
+                    Customer.subscription_end >= today_date  # Or not expired
+                )
             ).order_by(Customer.address).all()
             
             for customer in customers:
@@ -691,11 +727,16 @@ def admin_pickups():
     
     day_column = day_column_map.get(day_name)
     
-    # Get all active customers scheduled for this day
+    # Get all active customers scheduled for this day with non-expired subscriptions
     if day_column is not None:
+        filter_date_obj = filter_date  # filter_date is already a date object
         customers_for_day = Customer.query.filter(
             day_column == 1,
-            (Customer.active == 'Yes') | (Customer.active == 'yes')
+            (Customer.active == 'Yes') | (Customer.active == 'yes'),
+            db.or_(
+                Customer.subscription_end.is_(None),  # No end date
+                Customer.subscription_end >= filter_date_obj  # Or not expired on filter date
+            )
         ).all()
         
         # Create pickup records if they don't exist
@@ -737,17 +778,21 @@ def add_user():
         password = request.form.get('password')
         role = request.form.get('role')
         full_name = request.form.get('full_name')
-        
+
         if User.query.filter_by(username=username).first():
             flash('Username already exists!', 'danger')
         else:
-            user = User(username=username, role=role, full_name=full_name)
-            user.set_password(password)
-            db.session.add(user)
-            db.session.commit()
-            flash('User added successfully!', 'success')
-            return redirect(url_for('admin_users'))
-    
+            is_valid, error_msg = validate_password(password)
+            if not is_valid:
+                flash(error_msg, 'danger')
+            else:
+                user = User(username=username, role=role, full_name=full_name)
+                user.set_password(password)
+                db.session.add(user)
+                db.session.commit()
+                flash('User added successfully!', 'success')
+                return redirect(url_for('admin_users'))
+
     return render_template('add_user.html')
 
 
@@ -800,6 +845,268 @@ def uncomplete_pickup(pickup_id):
     return jsonify({'success': True, 'message': 'Pickup marked as incomplete!'})
 
 
+# ==================== SETTINGS ROUTES ====================
+
+def allowed_file(filename):
+    """Check if file has allowed extension"""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'xlsx', 'xls'}
+
+
+def is_day_scheduled(value):
+    """Check if a day column value indicates the day is scheduled.
+    Handles: 1, 1.0, 'X', 'x', '1', True, and similar values."""
+    if pd.isna(value):
+        return False
+    if isinstance(value, (int, float)):
+        return value == 1 or value == 1.0
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        val = value.strip().upper()
+        return val in ('X', '1', 'YES', 'Y', 'TRUE')
+    return False
+
+
+@app.route('/admin/settings', methods=['GET'])
+@admin_required
+def settings():
+    """Settings page with file upload"""
+    customer_count = Customer.query.count()
+    return render_template('settings.html', customer_count=customer_count)
+
+
+@app.route('/admin/settings/upload', methods=['POST'])
+@admin_required
+def upload_excel():
+    """Handle Excel file upload and update database"""
+    if 'excel_file' not in request.files:
+        flash('No file selected', 'danger')
+        return redirect(url_for('settings'))
+
+    file = request.files['excel_file']
+
+    if file.filename == '':
+        flash('No file selected', 'danger')
+        return redirect(url_for('settings'))
+
+    if not allowed_file(file.filename):
+        flash('Invalid file type. Please upload an Excel file (.xlsx or .xls)', 'danger')
+        return redirect(url_for('settings'))
+
+    try:
+        df = pd.read_excel(file, sheet_name='Service Log', header=1)
+        df.columns = df.columns.str.strip()
+        df = df[df['Number'].notna()]
+
+        import_mode = request.form.get('import_mode', 'update')
+
+        if import_mode == 'replace':
+            deleted_count = Customer.query.delete()
+            db.session.commit()
+            flash(f'Deleted {deleted_count} existing customers', 'info')
+
+        imported = 0
+        updated = 0
+        errors = 0
+
+        for _, row in df.iterrows():
+            try:
+                customer_number = int(row['Number']) if pd.notna(row.get('Number')) else None
+                if customer_number is None:
+                    continue
+
+                customer_data = {
+                    'customer_number': customer_number,
+                    'customer_name': str(row.get('Customer Name', '')).strip() if pd.notna(row.get('Customer Name')) else '',
+                    'address': str(row.get('Address', '')).strip() if pd.notna(row.get('Address')) else '',
+                    'phone_number': str(row.get('Phone Number', '')).strip() if pd.notna(row.get('Phone Number')) else '',
+                    'type': str(row.get('Type', 'Commercial')).strip() if pd.notna(row.get('Type')) else 'Commercial',
+                    'bin_size': str(row.get('Bin Size', '')).strip() if pd.notna(row.get('Bin Size')) else '',
+                    'bin_qty': int(row.get('Bin Qty', 1)) if pd.notna(row.get('Bin Qty')) else 1,
+                    'ward': str(row.get('Ward', '')).strip() if pd.notna(row.get('Ward')) else '',
+                    'frequency': str(row.get('Frequency', '')).strip() if pd.notna(row.get('Frequency')) else '',
+                    'time': str(row.get('Time', '')).strip() if pd.notna(row.get('Time')) else '',
+                    'sales_rep': str(row.get('Sales Rep', '')).strip() if pd.notna(row.get('Sales Rep')) else '',
+                    'payment_type': str(row.get('Payment Type', '')).strip() if pd.notna(row.get('Payment Type')) else '',
+                    'month_acquired': str(row.get('Month Acquired', '')).strip() if pd.notna(row.get('Month Acquired')) else '',
+                    'active': 'Yes' if str(row.get('Active in Target Month?', '')).upper() == 'YES' else 'No',
+                    'monday': 1 if is_day_scheduled(row.get('Mon')) else 0,
+                    'tuesday': 1 if is_day_scheduled(row.get('Tue')) else 0,
+                    'wednesday': 1 if is_day_scheduled(row.get('Wed')) else 0,
+                    'thursday': 1 if is_day_scheduled(row.get('Thurs')) else 0,
+                    'friday': 1 if is_day_scheduled(row.get('Fri')) else 0,
+                    'saturday': 1 if is_day_scheduled(row.get('Sat')) else 0,
+                }
+
+                # Handle amount paid
+                amount = row.get('Amount Paid')
+                if pd.notna(amount):
+                    try:
+                        customer_data['amount_paid'] = float(amount)
+                    except (ValueError, TypeError):
+                        customer_data['amount_paid'] = None
+
+                # Handle subscription dates
+                for date_field, col_name in [('subscription_start', 'Subscription Start'), ('subscription_end', 'Subscription End')]:
+                    date_val = row.get(col_name)
+                    if pd.notna(date_val):
+                        if isinstance(date_val, str):
+                            try:
+                                customer_data[date_field] = datetime.strptime(date_val, '%Y-%m-%d').date()
+                            except ValueError:
+                                try:
+                                    customer_data[date_field] = datetime.strptime(date_val, '%d/%m/%Y').date()
+                                except ValueError:
+                                    customer_data[date_field] = None
+                        else:
+                            customer_data[date_field] = date_val.date() if hasattr(date_val, 'date') else date_val
+                    else:
+                        customer_data[date_field] = None
+
+                existing = Customer.query.filter_by(customer_number=customer_number).first()
+
+                if existing:
+                    for key, value in customer_data.items():
+                        setattr(existing, key, value)
+                    updated += 1
+                else:
+                    new_customer = Customer(**customer_data)
+                    db.session.add(new_customer)
+                    imported += 1
+
+            except Exception as e:
+                errors += 1
+                print(f"Error processing row: {e}")
+                continue
+
+        db.session.commit()
+
+        msg_parts = []
+        if imported > 0:
+            msg_parts.append(f'{imported} new customers imported')
+        if updated > 0:
+            msg_parts.append(f'{updated} customers updated')
+        if errors > 0:
+            msg_parts.append(f'{errors} rows had errors')
+
+        flash(f"Import complete: {', '.join(msg_parts)}", 'success')
+
+    except ValueError as e:
+        if 'Service Log' in str(e):
+            flash('Could not find "Service Log" sheet in the Excel file.', 'danger')
+        else:
+            flash(f'Error reading Excel file: {str(e)}', 'danger')
+    except Exception as e:
+        flash(f'Error processing file: {str(e)}', 'danger')
+
+    return redirect(url_for('settings'))
+
+
+@app.route('/admin/settings/preview', methods=['POST'])
+@admin_required
+def preview_excel():
+    """Preview Excel file contents before importing"""
+    if 'excel_file' not in request.files:
+        return jsonify({'error': 'No file selected'}), 400
+
+    file = request.files['excel_file']
+
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+
+    if not allowed_file(file.filename):
+        return jsonify({'error': 'Invalid file type'}), 400
+
+    try:
+        xl_file = pd.ExcelFile(file)
+
+        if 'Service Log' not in xl_file.sheet_names:
+            return jsonify({
+                'error': f'Sheet "Service Log" not found. Available sheets: {", ".join(xl_file.sheet_names)}'
+            }), 400
+
+        df = pd.read_excel(xl_file, sheet_name='Service Log', header=1)
+        df.columns = df.columns.str.strip()
+        df = df[df['Number'].notna()]
+
+        total_rows = len(df)
+        active_count = len(df[df['Active in Target Month?'].str.upper() == 'YES']) if 'Active in Target Month?' in df.columns else 0
+
+        sample_cols = ['Number', 'Customer Name', 'Address', 'Active in Target Month?']
+        available_cols = [col for col in sample_cols if col in df.columns]
+        sample_data = df[available_cols].head(5).to_dict('records')
+
+        return jsonify({
+            'success': True,
+            'total_customers': total_rows,
+            'active_customers': active_count,
+            'inactive_customers': total_rows - active_count,
+            'columns_found': list(df.columns),
+            'sample_data': sample_data,
+            'current_db_count': Customer.query.count()
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@app.route('/admin/settings/backup', methods=['POST'])
+@admin_required
+def backup_database():
+    """Create a backup of current customer data as Excel file"""
+    try:
+        customers = Customer.query.all()
+
+        data = []
+        for c in customers:
+            data.append({
+                'Number': c.customer_number,
+                'Customer Name': c.customer_name,
+                'Address': c.address,
+                'Phone Number': c.phone_number,
+                'Type': c.type,
+                'Bin Size': c.bin_size,
+                'Bin Qty': c.bin_qty,
+                'Ward': c.ward,
+                'Frequency': c.frequency,
+                'Time': c.time,
+                'Sales Rep': c.sales_rep,
+                'Payment Type': c.payment_type,
+                'Month Acquired': c.month_acquired,
+                'Active in Target Month?': c.active if c.active else 'No',
+                'Mon': 'X' if c.monday else '',
+                'Tue': 'X' if c.tuesday else '',
+                'Wed': 'X' if c.wednesday else '',
+                'Thurs': 'X' if c.thursday else '',
+                'Fri': 'X' if c.friday else '',
+                'Sat': 'X' if c.saturday else '',
+                'Subscription Start': c.subscription_start,
+                'Subscription End': c.subscription_end,
+                'Amount Paid': c.amount_paid
+            })
+
+        df = pd.DataFrame(data)
+
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Service Log', index=False)
+        output.seek(0)
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'customer_backup_{timestamp}.xlsx'
+
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+
+    except Exception as e:
+        flash(f'Error creating backup: {str(e)}', 'danger')
+        return redirect(url_for('settings'))
+
+
 # ==================== INITIALIZATION ====================
 
 def init_database():
@@ -821,4 +1128,8 @@ def init_database():
 
 if __name__ == '__main__':
     init_database()
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Use environment variable to control debug mode (default: False for security)
+    debug_mode = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    host = os.environ.get('FLASK_HOST', '127.0.0.1')  # Default to localhost for security
+    port = int(os.environ.get('FLASK_PORT', 5000))
+    app.run(debug=debug_mode, host=host, port=port)
