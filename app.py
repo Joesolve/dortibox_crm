@@ -755,10 +755,18 @@ def admin_pickups():
         
         db.session.commit()
     
-    # Now get all pickups for the filter date
-    pickups = Pickup.query.filter_by(pickup_date=filter_date).join(Customer).order_by(
-        Pickup.completed, Customer.address
-    ).all()
+    # Now get all pickups for the filter date, but only for customers still scheduled for this day
+    if day_column is not None:
+        pickups = Pickup.query.filter_by(pickup_date=filter_date).join(Customer).filter(
+            day_column == 1,
+            (Customer.active == 'Yes') | (Customer.active == 'yes'),
+            db.or_(
+                Customer.subscription_end.is_(None),
+                Customer.subscription_end >= filter_date
+            )
+        ).order_by(Pickup.completed, Customer.address).all()
+    else:
+        pickups = []
     
     return render_template('admin_pickups.html', pickups=pickups, filter_date=filter_date)
 
