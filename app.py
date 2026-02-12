@@ -1215,13 +1215,12 @@ def init_database():
         db.session.commit()
 
 
-# Always ensure all tables exist (handles new models added to a running system)
-with app.app_context():
-    db.create_all()
+# Always ensure all tables exist and default data is set up
+# This runs on import (covers gunicorn/WSGI) and direct execution
+init_database()
 
 
 if __name__ == '__main__':
-    init_database()
     # Use environment variable to control debug mode (default: False for security)
     debug_mode = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
     host = os.environ.get('FLASK_HOST', '127.0.0.1')  # Default to localhost for security
