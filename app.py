@@ -1201,18 +1201,23 @@ def backup_database():
 def init_database():
     with app.app_context():
         db.create_all()
-        
+
         if not User.query.filter_by(username='admin').first():
             admin = User(username='admin', role='admin', full_name='Administrator')
             admin.set_password('admin123')
             db.session.add(admin)
-        
+
         if not User.query.filter_by(username='collector').first():
             collector = User(username='collector', role='collector', full_name='Collector User')
             collector.set_password('collector123')
             db.session.add(collector)
-        
+
         db.session.commit()
+
+
+# Always ensure all tables exist (handles new models added to a running system)
+with app.app_context():
+    db.create_all()
 
 
 if __name__ == '__main__':
