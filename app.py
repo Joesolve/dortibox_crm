@@ -41,12 +41,17 @@ class User(db.Model):
     password_hash = db.Column(db.String(200), nullable=False)
     role = db.Column(db.String(20), nullable=False)
     full_name = db.Column(db.String(100))
-    
+
+    assigned_wards = db.relationship('CollectorWard', backref='user', lazy=True, cascade='all, delete-orphan')
+
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
-    
+
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+    def get_ward_names(self):
+        return [cw.ward for cw in self.assigned_wards]
 
 
 class Customer(db.Model):
@@ -103,6 +108,14 @@ class Customer(db.Model):
         if not self.subscription_end:
             return None
         return (self.subscription_end - date.today()).days
+
+
+class CollectorWard(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    ward = db.Column(db.String(100), nullable=False)
+
+    __table_args__ = (db.UniqueConstraint('user_id', 'ward', name='uq_user_ward'),)
 
 
 class Pickup(db.Model):
@@ -282,7 +295,7 @@ def dashboard():
     else:
         today = date.today()
         day_name = today.strftime('%A').lower()
-        
+
         day_column_map = {
             'monday': Customer.monday,
             'tuesday': Customer.tuesday,
@@ -291,45 +304,59 @@ def dashboard():
             'friday': Customer.friday,
             'saturday': Customer.saturday
         }
-        
+
         day_column = day_column_map.get(day_name)
         pickups = []
-        
+
+        # Get collector's assigned wards
+        collector_wards = user.get_ward_names()
+
         if day_column is not None:
             # Only show active customers with non-expired subscriptions
             today_date = date.today()
-            customers = Customer.query.filter(
+            query = Customer.query.filter(
                 day_column == 1,
                 (Customer.active == 'Yes') | (Customer.active == 'yes'),
                 db.or_(
-                    Customer.subscription_end.is_(None),  # No end date
-                    Customer.subscription_end >= today_date  # Or not expired
+                    Customer.subscription_end.is_(None),
+                    Customer.subscription_end >= today_date
                 )
-            ).order_by(Customer.address).all()
-            
+            )
+
+            # Filter by assigned wards - if collector has ward assignments, restrict to those
+            if collector_wards:
+                query = query.filter(Customer.ward.in_(collector_wards))
+            else:
+                # No wards assigned means no access
+                query = query.filter(db.false())
+
+            customers = query.order_by(Customer.address).all()
+
             for customer in customers:
                 pickup = Pickup.query.filter_by(
                     customer_id=customer.id,
                     pickup_date=today
                 ).first()
-                
+
                 if not pickup:
                     pickup = Pickup(
                         customer_id=customer.id,
                         pickup_date=today
                     )
                     db.session.add(pickup)
-                
+
                 pickups.append({
                     'pickup': pickup,
                     'customer': customer
                 })
-            
+
             db.session.commit()
-        
-        return render_template('collector_dashboard.html', 
+
+        no_wards = len(collector_wards) == 0
+        return render_template('collector_dashboard.html',
                              pickups=pickups,
-                             today=today)
+                             today=today,
+                             no_wards=no_wards)
 
 
 # ==================== ADMIN CUSTOMER ROUTES ====================
@@ -797,11 +824,50 @@ def add_user():
                 user = User(username=username, role=role, full_name=full_name)
                 user.set_password(password)
                 db.session.add(user)
+                db.session.flush()
+
+                # Assign wards for collectors
+                if role == 'collector':
+                    selected_wards = request.form.getlist('wards')
+                    for ward_name in selected_wards:
+                        cw = CollectorWard(user_id=user.id, ward=ward_name)
+                        db.session.add(cw)
+
                 db.session.commit()
                 flash('User added successfully!', 'success')
                 return redirect(url_for('admin_users'))
 
-    return render_template('add_user.html')
+    wards = db.session.query(Customer.ward).filter(Customer.ward.isnot(None), Customer.ward != '').distinct().order_by(Customer.ward).all()
+    wards = [w[0] for w in wards]
+    return render_template('add_user.html', wards=wards)
+
+
+@app.route('/admin/users/edit/<int:id>', methods=['GET', 'POST'])
+@admin_required
+def edit_user(id):
+    user = User.query.get_or_404(id)
+
+    if request.method == 'POST':
+        user.full_name = request.form.get('full_name')
+        new_role = request.form.get('role')
+        user.role = new_role
+
+        # Update ward assignments
+        CollectorWard.query.filter_by(user_id=user.id).delete()
+        if new_role == 'collector':
+            selected_wards = request.form.getlist('wards')
+            for ward_name in selected_wards:
+                cw = CollectorWard(user_id=user.id, ward=ward_name)
+                db.session.add(cw)
+
+        db.session.commit()
+        flash('User updated successfully!', 'success')
+        return redirect(url_for('admin_users'))
+
+    wards = db.session.query(Customer.ward).filter(Customer.ward.isnot(None), Customer.ward != '').distinct().order_by(Customer.ward).all()
+    wards = [w[0] for w in wards]
+    user_wards = user.get_ward_names()
+    return render_template('edit_user.html', user=user, wards=wards, user_wards=user_wards)
 
 
 @app.route('/admin/users/delete/<int:id>', methods=['POST'])
@@ -824,17 +890,24 @@ def delete_user(id):
 def complete_pickup(pickup_id):
     pickup = Pickup.query.get_or_404(pickup_id)
     user = User.query.get(session['user_id'])
-    
+
+    # Enforce ward access for collectors
+    if user.role == 'collector':
+        customer = Customer.query.get(pickup.customer_id)
+        collector_wards = user.get_ward_names()
+        if customer.ward not in collector_wards:
+            return jsonify({'success': False, 'message': 'You do not have access to this ward.'}), 403
+
     data = request.get_json()
     notes = data.get('notes', '')
-    
+
     pickup.completed = True
     pickup.completed_at = datetime.now()
     pickup.completed_by = user.full_name or user.username
     pickup.notes = notes
-    
+
     db.session.commit()
-    
+
     return jsonify({'success': True, 'message': 'Pickup marked as completed!'})
 
 
@@ -842,14 +915,22 @@ def complete_pickup(pickup_id):
 @login_required
 def uncomplete_pickup(pickup_id):
     pickup = Pickup.query.get_or_404(pickup_id)
-    
+    user = User.query.get(session['user_id'])
+
+    # Enforce ward access for collectors
+    if user.role == 'collector':
+        customer = Customer.query.get(pickup.customer_id)
+        collector_wards = user.get_ward_names()
+        if customer.ward not in collector_wards:
+            return jsonify({'success': False, 'message': 'You do not have access to this ward.'}), 403
+
     pickup.completed = False
     pickup.completed_at = None
     pickup.completed_by = None
     pickup.notes = None
-    
+
     db.session.commit()
-    
+
     return jsonify({'success': True, 'message': 'Pickup marked as incomplete!'})
 
 
