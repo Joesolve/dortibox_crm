@@ -1,3 +1,4 @@
 instance/*.db
 # Ignore environment file
-.env__pycache__/
+.env
+__pycache__/
