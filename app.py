@@ -154,6 +154,18 @@ def admin_required(f):
     return decorated_function
 
 
+# Ensure database schema is up to date on first request (handles deployments
+# where the database file exists but is missing new tables, e.g. PythonAnywhere)
+_tables_verified = False
+
+@app.before_request
+def ensure_tables_exist():
+    global _tables_verified
+    if not _tables_verified:
+        db.create_all()
+        _tables_verified = True
+
+
 # ==================== ROUTES ====================
 
 @app.route('/')
